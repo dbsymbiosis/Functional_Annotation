@@ -23,15 +23,15 @@ def main():
 	# Pass command line arguments. 
 	parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter, description=DESCRIPTION)
 	parser.add_argument('-i', '--input', metavar='data_file.txt', 
-		required=False, default=sys.stdin, type=lambda x: __parse_file_check_compression(x, 'r'), 
+		required=False, default=sys.stdin, type=lambda x: File(x, 'r'), 
 		help='Input [gzip] file (default: stdin)'
 	)
 	parser.add_argument('-o', '--output', metavar='data_file_with_extra_column.txt', 
-		required=False, default=sys.stdout, type=lambda x: __parse_file_check_compression(x, 'w'), 
+		required=False, default=sys.stdout, type=lambda x: File(x, 'w'), 
 		help='Output [gzip] file (default: stdout)'
 	)
 	parser.add_argument('-a', '--add', metavar='info_to_add.txt', 
-		required=True, type=lambda x: __parse_file_check_compression(x, 'r'), 
+		required=True, type=lambda x: File(x, 'r'), 
 		help='Input [gzip] key:value pairs'
 	)
 	parser.add_argument('-c', '--col', 
@@ -68,37 +68,36 @@ def main():
 	
 	logging.debug('%s', args) ## DEBUG
 	
-	info2add = load_key_value_from_file(args.add, args.delim_add)
-	args.add.close()
+	with args.add as add_file:
+		info2add = load_key_value_from_file(add_file, args.delim_add)
 	
-	# For each line in input file
-	for line in args.input:
-		line = line.strip('\n')
-		if not line:
-			continue
-		
-		if line.startswith('#'):
-			if args.keep_comments:
-				args.output.write(line + '\n')
-			continue
-		
-		line_sep = line.split(args.delim_input)
-		
-		try:
-			key = line_sep[args.col-1]
-			if key in info2add.keys():
-				args.output.write(line + args.delim_input + info2add[key] + '\n')
-				logging.debug('Value added: %s:%s', key, info2add[key]) ## DEBUG
-			else:
-				args.output.write(line + args.delim_input + args.default + '\n')
-				logging.debug('Default added: %s', args.default) ## DEBUG
-		except IndexError:
-			logging.info("[ERROR]: %s", line)
-			logging.info("[ERROR]: -c/--col %s out of range for --infile", args.col)
-			sys.exit(1)
+	with args.input as input_file, args.output as output_file:
+		# For each line in input file
+		for line in input_file:
+			line = line.strip('\n')
+			if not line:
+				continue
+			
+			if line.startswith('#'):
+				if args.keep_comments:
+					output_file.write(line + '\n')
+				continue
+			
+			line_sep = line.split(args.delim_input)
+			
+			try:
+				key = line_sep[args.col-1]
+				if key in info2add.keys():
+					output_file.write(line + args.delim_input + info2add[key] + '\n')
+					logging.debug('Value added: %s:%s', key, info2add[key]) ## DEBUG
+				else:
+					output_file.write(line + args.delim_input + args.default + '\n')
+					logging.debug('Default added: %s', args.default) ## DEBUG
+			except IndexError:
+				logging.info("[ERROR]: %s", line)
+				logging.info("[ERROR]: -c/--col %s out of range for --infile", args.col)
+				sys.exit(1)
 	
-	args.input.close()
-	args.output.close()
 
 
 
@@ -128,22 +127,65 @@ def load_key_value_from_file(keyvalue_file, delim):
 
 
 
-def __parse_file_check_compression(fh, mode='r'):
-	'''
-	Open stdin/normal/gzip files - check file exists (if mode='r') and open using appropriate function.
-	'''
-	# Check file exists if mode='r'
-	if not os.path.exists(fh) and mode == 'r':
-		raise argparse.ArgumentTypeError("The file %s does not exist!" % fh)
-	
-	## open with gzip if it has the *.gz extension, else open normally (including stdin)
-	try:
-		if fh.endswith(".gz"):
-			return gzip.open(fh, mode+'b')
-		else:
-			return open(fh, mode)
-	except IOError as e:
-		raise argparse.ArgumentTypeError('%s' % e)
+class File(object):
+        '''
+        Context Manager class for opening stdin/stdout/normal/gzip files.
+
+         - Will check that file exists if mode='r'
+         - Will open using either normal open() or gzip.open() if *.gz extension detected.
+         - Designed to be handled by a 'with' statement (other wise __enter__() method wont
+            be run and the file handle wont be returned)
+
+        NOTE:
+                - Can't use .close() directly on this class unless you uncomment the close() method
+                - Can't use this class with a 'for' loop unless you uncomment the __iter__() method
+                        - In this case you should also uncomment the close() method as a 'for'
+                           loop does not automatically cloase files, so you will have to do this
+                           manually.
+                - __iter__() and close() are commented out by default as it is better to use a 'with'
+                   statement instead as it will automatically close files when finished/an exception
+                   occures.
+                - Without __iter__() and close() this object will return an error when directly closed
+                   or you attempt to use it with a 'for' loop. This is to force the use of a 'with'
+                   statement instead.
+
+        Code based off of context manager tutorial from: https://book.pythontips.com/en/latest/context_managers.html
+        '''
+	def __init__(self, file_name, mode):
+                ## Upon initializing class open file (using gzip if needed)
+                self.file_name = file_name
+                self.mode = mode
+
+                ## Check file exists if mode='r'
+                if not os.path.exists(self.file_name) and mode == 'r':
+                        raise argparse.ArgumentTypeError("The file %s does not exist!" % self.file_name)
+
+                ## Open with gzip if it has the *.gz extension, else open normally (including stdin)
+                try:
+                        if self.file_name.endswith(".gz"):
+                                #print "Opening gzip compressed file (mode: %s): %s" % (self.mode, self.file_name) ## DEBUG
+                                self.file_obj = gzip.open(self.file_name, self.mode+'b')
+                        else:
+                                #print "Opening normal file (mode: %s): %s" % (self.mode, self.file_name) ## DEBUG
+                                self.file_obj = open(self.file_name, self.mode)
+                except IOError as e:
+                        raise argparse.ArgumentTypeError('%s' % e)
+        def __enter__(self):
+                ## Run When 'with' statement uses this class.
+                #print "__enter__: %s" % (self.file_name) ## DEBUG
+                return self.file_obj
+        def __exit__(self, type, value, traceback):
+                ## Run when 'with' statement is done with object. Either because file has been exhausted, we are done writing, or an error has been encountered.
+                #print "__exit__: %s" % (self.file_name) ## DEBUG
+                self.file_obj.close()
+#       def __iter__(self):
+#               ## iter method need for class to work with 'for' loops
+#               #print "__iter__: %s" % (self.file_name) ## DEBUG
+#               return self.file_obj
+#       def close(self):
+#               ## method to call .close() directly on object.
+#               #print "close: %s" % (self.file_name) ## DEBUG
+#               self.file_obj.close()
 
 
 

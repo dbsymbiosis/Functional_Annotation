@@ -60,12 +60,12 @@ def top_hit_iter(blast_fh, num_subjects, num_hits):
                 - Does not transform columns (will not convert str to int e.g. for start/stop/etc.)
 
         """
-	
-	for query_id, hits in groupby(blast_fh, lambda x: x.split('\t')[0]):
+	delim='\t'
+	for query_id, hits in groupby(blast_fh, lambda x: x.strip().split(delim)[0]):
 		subjects_seen = 0
 		filtered_hits = []
 		
-		for subject_id, hsps in groupby(hits, lambda l: l.split()[1]): # For each query iterate over subject seqs
+		for subject_id, hsps in groupby(hits, lambda l: l.strip().split(delim)[1]): # For each query iterate over subject seqs
 			
 			subjects_seen += 1
 			if subjects_seen > num_subjects:
@@ -79,7 +79,7 @@ def top_hit_iter(blast_fh, num_subjects, num_hits):
 				if hsps_seen > num_hits:
 					break
 				
-				filtered_hits.append(h.strip().split())
+				filtered_hits.append(h.strip().split(delim))
 				
 		yield query_id, filtered_hits
 

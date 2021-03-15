@@ -1,10 +1,9 @@
 #!/usr/bin/python
 DESCRIPTION = '''
-Takes the putput file from pfam_scan.pl and returns a 2 column annotation file.
+Takes the putput file from pfam_scan.pl, filter hits by evalue and returns a 2 column annotation file (one line per sequence; combines multiple hits into a single line).
 
 NOTE:
-	- Will filter hits by evalue and combines multiple hits into a single line.
-	- If a pep has multiple hits to the same domain then that domain will appear multiple times. 
+	- If a pep has multiple hits to the same domain then that domain will appear multiple times in the annotation column.  
 '''
 import sys
 import os

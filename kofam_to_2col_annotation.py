@@ -44,7 +44,7 @@ def kofam_to_2col_annotation(infile, outfile, kofamid_delim):
 		
 		# Kofam output format (tab sep; kofam id might not exist):
 		# <seq id> [kofam id]
-		line_split = line.split()
+		line_split = line.split('\t')
 		
 		if len(line_split) == 1: # Ignore seq_ids that dont have hits.
 			continue
